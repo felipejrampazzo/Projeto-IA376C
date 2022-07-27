@@ -1,59 +1,10 @@
 /* -*- P4_16 -*- */
 
-/*
- * P4 Calculator
- *
- * This program implements a simple protocol. It can be carried over Ethernet
- * (Ethertype 0x1234).
- *
- * The Protocol header looks like this:
- *
- *        0                1                  2              3
- * +----------------+----------------+----------------+---------------+
- * |      P         |       4        |     Version    |     Op        |
- * +----------------+----------------+----------------+---------------+
- * |                              Operand A                           |
- * +----------------+----------------+----------------+---------------+
- * |                              Operand B                           |
- * +----------------+----------------+----------------+---------------+
- * |                              Result                              |
- * +----------------+----------------+----------------+---------------+
- *
- * P is an ASCII Letter 'P' (0x50)
- * 4 is an ASCII Letter '4' (0x34)
- * Version is currently 0.1 (0x01)
- * Op is an operation to Perform:
- *   '+' (0x2b) Result = OperandA + OperandB
- *   '-' (0x2d) Result = OperandA - OperandB
- *   '&' (0x26) Result = OperandA & OperandB
- *   '|' (0x7c) Result = OperandA | OperandB
- *   '^' (0x5e) Result = OperandA ^ OperandB
- *
- * The device receives a packet, performs the requested operation, fills in the
- * result and sends the packet back out of the same port it came in on, while
- * swapping the source and destination addresses.
- *
- * If an unknown operation is specified or the header is not valid, the packet
- * is dropped
- */
-
 #include <core.p4>
 #include <v1model.p4>
 
-/*
- * Define the headers the program will recognize
- */
+#define DIMENSION 4
 
- #define DIMENSION 4
-
-/* DIMENSION*12 */
- typedef bit<32> vector_size;
- /* vector_size*DIMENSION */
- typedef bit<192> matrix_size;
-
-/* Matriz de 4 dimensoes (cada valor possui 12 bits)
-* 4x12 = 48 -> 48x4= 192 bits totais
-*/
 register<bit<32>>(20) register_pub_matrix;
 register<bit<32>>(10) register_secret_vector;
 register<bit<32>>(10) register_noise_vector;
@@ -62,19 +13,14 @@ register<bit<32>>(36) register_public_vector_full;
 register<bit<32>>(18) register_mod_public_vector;
 register <bit<32>>(4) register_seed;
 
-/*
- * Standard ethernet header
- */
+
 header ethernet_t {
     bit<48> dstAddr;
     bit<48> srcAddr;
     bit<16> etherType;
 }
 
-/*
- * This is a custom protocol header for the calculator. We'll use
- * ethertype 0x1234 for is (see parser)
- */
+
 const bit<16> P4CALC_ETYPE = 0x1234;
 const bit<8>  P4CALC_P     = 0x4B; // K - KYBER
 const bit<8>  GEN  = 0x47;   // 'G'
@@ -100,22 +46,12 @@ header p4calc_t {
     bit<32> seed;
 }
 
-/*
- * All headers, used in the program needs to be assembed into a single struct.
- * We only need to declare the type, but there is no need to instantiate it,
- * because it is done "by the architecture", i.e. outside of P4 functions
- */
+
 struct headers {
     ethernet_t   ethernet;
     p4calc_t     p4calc;
 }
 
-/*
- * All metadata, globally used in the program, also  needs to be assembed
- * into a single struct. As in the case of the headers, we only need to
- * declare the type, but there is no need to instantiate it,
- * because it is done "by the architecture", i.e. outside of P4 functions
- */
 
 struct metadata {
     /* In our case it is empty */
@@ -165,62 +101,16 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
 
-    action send_back(bit<32> result1, bit<32> result2) {
+    action send_back() {
         bit<48> tmp;
-
-        /* Put the result back in */
-        // hdr.p4calc.t1 = result1;
-
-
-        /* Swap the MAC addresses */
-        bit<32> teste;
-        // register_pub_matrix.read(teste,11);
-
-        // bit<32> ninput = 123456689;
         
-        // hash(hdr.p4calc.t, HashAlgorithm.crc32, (bit<32>) 0, {ninput}, (bit<32>) PARAM_Q);
-        
-
-        // hash(hdr.p4calc.t, HashAlgorithm.identity, (bit<32>) 0, {hdr.p4calc.t}, (bit<32>)6);
-
-        // register_public_vector_full.read(teste, 0);
-        // hdr.p4calc.t_0 = teste;
-        // register_public_vector_full.read(teste, 1);
-        // hdr.p4calc.t_1 = teste;
-        // register_public_vector_full.read(teste, 2);
-        // hdr.p4calc.t_2 = teste;
-        // register_public_vector_full.read(teste, 3);
-        // hdr.p4calc.t_3 = teste;
-        // register_public_vector_full.read(teste, 4);
-        // hdr.p4calc.t_4 = teste;
-        // register_public_vector_full.read(teste, 5);
-        // hdr.p4calc.t_5 = teste;
-        // register_public_vector_full.read(teste, 6);
-        // hdr.p4calc.t_6 = teste;
-        // register_public_vector_full.read(teste, 7);
-        // hdr.p4calc.t_7 = teste;
-
         tmp = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = hdr.ethernet.srcAddr;
         hdr.ethernet.srcAddr = tmp;
 
-
-
         /* Send the packet back to the port it came from */
         standard_metadata.egress_spec = standard_metadata.ingress_port;
     }
-
-    // action mod(bit<16> x, bit<16> y){
-    //     bit<16> hash_value;
-    //     hash(hash_value, HashAlgorithm.identity, (bit<16>) 0, {x}, y);
-    //     return hash_value;
-    // }
-
-    // action rng(){
-    //     bit<32> rand_n;
-    //     random(rand_n, 0, PARAM_Q);
-    //     return rand_n;
-    // }
 
     #define gen_matrix(INDEX, ROUND) action gen_matrix_i##INDEX##_r##ROUND##() { \
         bit<32> coef;                                                            \
@@ -642,7 +532,7 @@ control MyIngress(inout headers hdr,
         poly_mod_16_11_8();
         poly_mod_17_12_9();
 
-        send_back(0, 0);
+        send_back();
     }
 
     action enc() {
@@ -653,12 +543,12 @@ control MyIngress(inout headers hdr,
         bit<32> m;
         random(m, 0, 2);
 
-        send_back(0, 0);
+        send_back();
     }
 
     action dec() {
 
-        send_back(0, 0);
+        send_back();
     }
 
     action operation_drop() {
